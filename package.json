@@ -1,0 +1,39 @@
+{
+  "name": "fadian",
+  "version": "1.0.0",
+  "description": "法典 — AI 数字法务助手，合同审查 / 法规检索 / 合规分析",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win portable",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --win --mac"
+  },
+  "build": {
+    "appId": "com.fadian.desktop",
+    "productName": "法典",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "pipeline-engine.js",
+      "frontend/**/*",
+      "agents/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "frontend/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "frontend/icon.png"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  }
+}

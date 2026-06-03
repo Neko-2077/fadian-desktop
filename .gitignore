@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.api-key
+*.log
+.DS_Store
+Thumbs.db

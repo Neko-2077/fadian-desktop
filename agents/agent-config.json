@@ -1,0 +1,84 @@
+{
+  "agents": {
+    "commander": {
+      "id": "commander",
+      "name": "法典·总指挥",
+      "emoji": "⚖️",
+      "role": "总指挥",
+      "description": "接收指令、拆分任务、调度全队、质量验收",
+      "workspace": "agents/commander",
+      "pipeline": true
+    },
+    "creator": {
+      "id": "creator",
+      "name": "合同审查官",
+      "emoji": "🔍",
+      "role": "审查官",
+      "description": "读合同、逐条标注风险等级、输出结构化审查清单",
+      "workspace": "agents/creator",
+      "pipeline": true
+    },
+    "researcher": {
+      "id": "researcher",
+      "name": "法规研究员",
+      "emoji": "📚",
+      "role": "研究员",
+      "description": "检索法律法规、整理判例、提供法条原文依据",
+      "workspace": "agents/researcher",
+      "pipeline": true
+    },
+    "compliance": {
+      "id": "compliance",
+      "name": "合规顾问",
+      "emoji": "📋",
+      "role": "合规顾问",
+      "description": "整合审查与法规、输出合规报告、协商优先级建议",
+      "workspace": "agents/compliance",
+      "pipeline": true
+    },
+    "drafter": {
+      "id": "drafter",
+      "name": "文书起草员",
+      "emoji": "✍️",
+      "role": "起草员",
+      "description": "起草合同、律师函、法律意见书、协议模板",
+      "workspace": "agents/drafter",
+      "pipeline": true
+    },
+    "analyst": {
+      "id": "analyst",
+      "name": "案例分析官",
+      "emoji": "⚖️",
+      "role": "案例分析官",
+      "description": "类案检索、判例要点整理、案例对比分析",
+      "workspace": "agents/analyst",
+      "pipeline": true
+    },
+    "evidence": {
+      "id": "evidence",
+      "name": "证据梳理员",
+      "emoji": "📎",
+      "role": "证据梳理员",
+      "description": "证据链梳理、时间线整理、材料清单输出",
+      "workspace": "agents/evidence",
+      "pipeline": true
+    }
+  },
+  "pipelines": {
+    "contract_review": {
+      "name": "标准合同审查（三审合一）",
+      "steps": ["creator", "researcher", "compliance"],
+      "approver": "commander"
+    },
+    "legal_drafting": {
+      "name": "法律文书起草",
+      "steps": ["researcher", "drafter", "creator"],
+      "approver": "commander"
+    },
+    "full_case_prep": {
+      "name": "完整案件准备",
+      "steps": ["creator", "analyst", "evidence", "compliance"],
+      "approver": "commander"
+    }
+  }
+}
