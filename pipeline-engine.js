@@ -13,7 +13,7 @@ const http = require('http');
 // ── 配置 ──
 const AGENTS_DIR = path.join(__dirname, 'agents');
 const CONFIG_FILE = path.join(__dirname, 'agents', 'agent-config.json');
-const KEY_FILE = path.join(__dirname, '.api-key');
+const KEY_FILE = path.join(require('os').homedir(), '.fadian-api-key');
 
 const DEEPSEEK_API = 'https://api.deepseek.com/chat/completions';
 const MODEL = 'deepseek-chat';  // 等价于 DeepSeek V4 Pro

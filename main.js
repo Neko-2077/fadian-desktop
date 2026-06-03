@@ -44,8 +44,9 @@ ipcMain.handle('api:health', async () => {
   return { status: 'ok', version: '1.0.0' };
 });
 
-ipcMain.handle('api:save-key', async (_event, apiKey) => {
-  saveApiKey(apiKey);
+ipcMain.handle('api:save-key', async (_event, data) => {
+  const key = typeof data === 'string' ? data : data.apiKey;
+  saveApiKey(key);
   return { success: true };
 });
 
@@ -54,7 +55,8 @@ ipcMain.handle('api:check-key', async () => {
   return { hasKey: !!key, masked: key ? maskKey(key) : null };
 });
 
-ipcMain.handle('api:run-review', async (_event, { content, fileName, pipelineType }) => {
+ipcMain.handle('api:run-review', async (_event, data) => {
+  const { content, fileName, pipelineType } = data;
   const result = await runPipeline(content, fileName, pipelineType);
   return result;
 });
