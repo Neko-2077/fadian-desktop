@@ -1,6 +1,6 @@
 // 法典 — 前端交互逻辑
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
-let S={keyOk:false,fileName:null,fileContent:null,pipe:'contract_review',running:false};
+let S={keyOk:false,fileName:null,fileContent:null,textContent:null,pipe:'contract_review',running:false};
 const PIPES=[
   {id:'contract_review',name:'标准合同审查',icon:'🔍',steps:'审查官 → 研究员 → 合规顾问'},
   {id:'legal_drafting',name:'法律文书起草',icon:'✍️',steps:'研究员 → 起草员 → 审查官'},
@@ -48,6 +48,23 @@ function bindEvents(){
   $('#keyInput').addEventListener('keydown',function(e){if(e.key==='Enter')svKey()});
   $('#btnGo').addEventListener('click',start);
   $('#linkGetKey').addEventListener('click',function(e){e.preventDefault();window.open('https://platform.deepseek.com/api_keys','_blank')});
+  // 文字输入实时监听
+  $('#textInput').addEventListener('input',function(){
+    var len=$('#textInput').value.length;
+    $('#charCount').textContent=len+' / 50000 字';
+    S.textContent=$('#textInput').value.trim()||null;
+    S.fileContent=null; S.fileName=null;
+    $('#uploadZone').classList.remove('has-file');
+    $('#uploadZone').querySelector('.up-icon').textContent='📤';
+    $('#uploadZone').querySelector('.up-text').textContent='点击上传合同文件';
+    $('#uploadZone').querySelector('.up-hint').innerHTML='拖拽或点击 · 支持 .txt .md .docx';
+    if(S.textContent){
+      $('#liveStream').textContent='已输入文字内容（'+S.textContent.length+' 字符）';
+      $('#emptyState').style.display='none';
+      $('#progressPanel').classList.add('visible');
+    }
+    upBtn();
+  });
 }
 
 // ── Key 管理 ──
@@ -85,7 +102,8 @@ async function svKey(){
 function hdFile(f){
   var ext=f.name.split('.').pop().toLowerCase();
   if(['txt','md','docx'].indexOf(ext)===-1){alert('支持 .txt .md .docx 格式');return}
-  S.fileName=f.name;
+  S.fileName=f.name; S.textContent=null;
+  $('#textInput').value=''; $('#charCount').textContent='0 / 50000 字';
   var r=new FileReader();
   r.onload=function(e){
     S.fileContent=e.target.result;
@@ -106,7 +124,7 @@ function upBtn(){
   if(S.running){b.disabled=true;b.classList.add('running');b.textContent='⏳ 审查中...';return}
   b.classList.remove('running');
   if(!S.keyOk){b.disabled=true;b.textContent='请先配置 API Key'}
-  else if(!S.fileContent){b.disabled=true;b.textContent='请先上传合同文件'}
+  else if(!S.fileContent&&!S.textContent){b.disabled=true;b.textContent='请上传合同文件或输入文字'}
   else{b.disabled=false;b.textContent='开始审查'}
 }
 
@@ -122,7 +140,7 @@ function updateStageCard(name,status){
 
 // ── 审查流程 ──
 async function start(){
-  if(S.running||!S.fileContent)return;
+  if(S.running||(!S.fileContent&&!S.textContent))return;
   S.running=true;upBtn();setHS('审查中...',true);
   $('#progressPanel').classList.add('visible');$('#resultPanel').classList.remove('visible');$('#emptyState').style.display='none';
 
@@ -132,6 +150,9 @@ async function start(){
 
   $('#stages').innerHTML=st.map(function(s){return '<div class="stage-card pending" data-s="'+s.n+'"><div class="sc-icon">'+s.e+'</div><div class="sc-name">'+s.n+'</div><div class="sc-role">'+s.r+'</div><div class="sc-badge">等待</div></div>'}).join('');
   $('#liveStream').textContent='🚀 启动审查流程...';
+
+  var content=S.fileContent||S.textContent;
+  var fileName=S.fileName||('手动输入（'+content.length+'字）');
 
   var result=null;
   try{
@@ -143,7 +164,7 @@ async function start(){
           if(si<st.length){updateStageCard(st[si].n,'done');si++;tick()}
         },800);
       })();
-      result=await window.fadian.runReview({content:S.fileContent,fileName:S.fileName,pipelineType:S.pipe});
+      result=await window.fadian.runReview({content:content,fileName:fileName,pipelineType:S.pipe});
       st.forEach(function(s){updateStageCard(s.n,'done')});
     }else{
       result=await runSSE();
@@ -157,7 +178,9 @@ async function start(){
 }
 
 async function runSSE(){
-  var resp=await fetch('http://localhost:28999/api/run-review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:S.fileContent,fileName:S.fileName,pipelineType:S.pipe})});
+  var content=S.fileContent||S.textContent;
+  var fileName=S.fileName||('手动输入（'+content.length+'字）');
+  var resp=await fetch('http://localhost:28999/api/run-review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:content,fileName:fileName,pipelineType:S.pipe})});
   if(!resp.ok)throw new Error('请求失败 ('+resp.status+')');
   var reader=resp.body.getReader(),decoder=new TextDecoder();
   var buf='',result=null;
@@ -184,7 +207,8 @@ async function runSSE(){
 // ── 结果展示 ──
 function showResult(r){
   $('#progressPanel').classList.remove('visible');$('#resultPanel').classList.add('visible');
-  $('#resultMeta').innerHTML='<div class="meta-item">📋 '+(r.pipelineName||'标准合同审查')+'</div><div class="meta-item">⏱ '+(r.elapsedSeconds||'?')+' 秒</div><div class="meta-item">📄 '+S.fileName+'</div>';
+  var fn=S.fileName||('手动输入');
+  $('#resultMeta').innerHTML='<div class="meta-item">📋 '+(r.pipelineName||'标准合同审查')+'</div><div class="meta-item">⏱ '+(r.elapsedSeconds||'?')+' 秒</div><div class="meta-item">📄 '+fn+'</div>';
   var ss=r.stages||[];
   if(ss.length<=1){$('#resultTabs').style.display='none';$('#resultTabContents').innerHTML='<div class="result-body">'+md2h(r.finalReport||'')+'</div>'}
   else{
