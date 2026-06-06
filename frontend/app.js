@@ -31,6 +31,16 @@ async function api(url,body){
   }).join('');
   await ckKey();
   bindEvents();
+  // 恢复上次审查结果 + 加载历史列表
+  if(isElectron){
+    try{
+      var prev=await window.fadian.loadLatest();
+      if(prev&&prev.result){
+        showResult(prev.result);
+      }
+    }catch(e){console.error('[init] loadLatest err:',e)}
+    refreshHistoryList();
+  }
 })();
 
 function bindEvents(){
@@ -48,6 +58,16 @@ function bindEvents(){
   $('#keyInput').addEventListener('keydown',function(e){if(e.key==='Enter')svKey()});
   $('#btnGo').addEventListener('click',start);
   $('#linkGetKey').addEventListener('click',function(e){e.preventDefault();window.open('https://platform.deepseek.com/api_keys','_blank')});
+  // 历史面板
+  $('#historyHeader').addEventListener('click',function(){
+    var list=$('#historyList');
+    var toggle=$('#historyToggle');
+    var open=list.classList.contains('open');
+    if(open){list.classList.remove('open');toggle.classList.remove('open')}
+    else{list.classList.add('open');toggle.classList.add('open');refreshHistoryList()}
+  });
+  // 导出按钮
+  bindExportEvents();
   // 文字输入实时监听
   $('#textInput').addEventListener('input',function(){
     var len=$('#textInput').value.length;
@@ -206,9 +226,15 @@ async function runSSE(){
 
 // ── 结果展示 ──
 function showResult(r){
+  lastResult=r;
+  // 补全 meta 信息（审查流程中有 S，恢复历史时可能没有）
+  lastResult.fileName=lastResult.fileName||S.fileName||('手动输入');
+  lastResult.pipelineName=lastResult.pipelineName||(PIPES.find(function(p){return p.id===S.pipe})||PIPES[0]).name;
   $('#progressPanel').classList.remove('visible');$('#resultPanel').classList.add('visible');
-  var fn=S.fileName||('手动输入');
-  $('#resultMeta').innerHTML='<div class="meta-item">📋 '+(r.pipelineName||'标准合同审查')+'</div><div class="meta-item">⏱ '+(r.elapsedSeconds||'?')+' 秒</div><div class="meta-item">📄 '+fn+'</div>';
+  var fn=lastResult.fileName||S.fileName||('手动输入');
+  // 根据 pipelineName 反查 icon
+  var pipe=PIPES.find(function(p){return p.name===lastResult.pipelineName})||PIPES[0];
+  $('#resultMeta').innerHTML='<div class="meta-item">'+pipe.icon+' '+lastResult.pipelineName+'</div><div class="meta-item">⏱ '+(r.elapsedSeconds||'?')+' 秒</div><div class="meta-item">📄 '+fn+'</div>';
   var ss=r.stages||[];
   if(ss.length<=1){$('#resultTabs').style.display='none';$('#resultTabContents').innerHTML='<div class="result-body">'+md2h(r.finalReport||'')+'</div>'}
   else{
@@ -222,7 +248,41 @@ function showResult(r){
     })});
   }
   $('#mainContent').scrollTop=0;
+  // 刷新历史列表
+  refreshHistoryList();
 }
+
+// ── 历史列表 ──
+async function refreshHistoryList(){
+  if(!isElectron)return;
+  try{
+    var history=await window.fadian.loadHistory();
+    var list=$('#historyList');
+    if(!history.length){list.innerHTML='<div class="history-item" style="color:var(--text3)">暂无历史记录</div>';return}
+    list.innerHTML=history.map(function(h,i){
+      var pipeName=PIPES.find(function(p){return p.id===h.pipelineType});
+      pipeName=pipeName?pipeName.name:'审查';
+      var time=new Date(h.time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      var fn=(h.fileName||'').replace(/\.(txt|md|docx)$/i,'');
+      return '<div class="history-item" data-idx="'+i+'" onclick="loadHistoryItem('+i+')"><span class="hi-name">'+pipeName+' · '+fn+'</span><span class="hi-time">'+time+'</span></div>';
+    }).join('');
+  }catch(e){console.error('[refreshHistoryList]',e)}
+}
+
+// 暴露到全局作用域供 onclick 使用
+window.loadHistoryItem=async function(idx){
+  try{
+    var history=await window.fadian.loadHistory();
+    var item=history[idx];
+    if(item&&item.result){
+      item.result.fileName=item.fileName;
+      item.result.pipelineName=PIPES.find(function(p){return p.id===item.pipelineType}).name;
+      showResult(item.result);
+      $('#historyList').classList.remove('open');
+      $('#historyToggle').classList.remove('open');
+    }
+  }catch(e){console.error('[loadHistoryItem]',e)}
+};
 
 // ── Markdown → HTML ──
 function md2h(md){
@@ -247,5 +307,95 @@ function md2h(md){
   h=h.replace(/<p><\/(h[1-4]|ul|ol|table|blockquote|hr|tr)>/g,'</$1>');
   h=h.replace(/<(h[1-4]|ul|ol|table|blockquote|hr|tr)><\/p>/g,'<$1>');
   h=h.replace(/<p><\/p>/g,'');
+  return h;
+}
+
+// ── 导出功能 ──
+var lastResult=null;
+
+function bindExportEvents(){
+  $('#btnExportMd').addEventListener('click',function(){doExport('md')});
+  $('#btnExportDocx').addEventListener('click',function(){doExport('docx')});
+  $('#btnExportTxt').addEventListener('click',function(){doExport('txt')});
+}
+
+function buildReportMarkdown(r){
+  var lines=[];
+  var pipeName=r.pipelineName||'标准合同审查';
+  lines.push('# '+pipeName+' 报告');
+  lines.push('');
+  lines.push('> 生成时间：'+new Date().toLocaleString());
+  lines.push('> 耗时：'+(r.elapsedSeconds||'?')+' 秒');
+  lines.push('');
+  var ss=r.stages||[];
+  if(!ss.length)return lines.join('\n')+'\n\n'+(r.finalReport||'');
+  for(var i=0;i<ss.length;i++){
+    var s=ss[i];
+    lines.push('## '+s.emoji+' '+s.name);
+    lines.push('');
+    lines.push(s.output||'(无输出)');
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+function buildReportText(r){
+  var md=buildReportMarkdown(r);
+  // 简单去标记
+  return md.replace(/^#+ /gm,'').replace(/\*\*/g,'').replace(/\*/g,'').replace(/`/g,'').replace(/^> /gm,'').replace(/^---$/gm,'---');
+}
+
+async function doExport(format){
+  if(!lastResult){
+    alert('没有可导出的报告');
+    return;
+  }
+  var pipeName=lastResult.pipelineName||'审查';
+  var fn=lastResult.fileName||('手动输入');
+  var content,ext,defaultName,filters;
+  if(format==='docx'){
+    // docx: 用 html 格式，Word 可打开
+    content=buildReportHtml(lastResult);
+    ext='docx';
+    defaultName=pipeName+'报告_'+fn.replace(/\.[^.]+$/,'')+'.doc';
+    filters=[{name:'Word 文档',extensions:['doc','docx']}];
+  }else if(format==='md'){
+    content=buildReportMarkdown(lastResult);
+    ext='md';
+    defaultName=pipeName+'报告_'+fn.replace(/\.[^.]+$/,'')+'.md';
+    filters=[{name:'Markdown',extensions:['md']}];
+  }else{
+    content=buildReportText(lastResult);
+    ext='txt';
+    defaultName=pipeName+'报告_'+fn.replace(/\.[^.]+$/,'')+'.txt';
+    filters=[{name:'纯文本',extensions:['txt']}];
+  }
+  if(isElectron){
+    var res=await window.fadian.exportFile({content:content,defaultName:defaultName,filters:filters});
+    if(!res.success){
+      if(res.error)alert('导出失败: '+res.error);
+    }
+  }else{
+    // 浏览器回退：下载
+    var blob=new Blob([content],{type:format==='docx'?'text/html':'text/plain;charset=utf-8'});
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=defaultName;
+    a.click();
+  }
+}
+
+function buildReportHtml(r){
+  var pipeName=r.pipelineName||'标准合同审查';
+  var h='<html><head><meta charset="UTF-8"><title>'+pipeName+'报告</title>';
+  h+='<style>body{font-family:"Noto Sans SC",sans-serif;line-height:1.8;max-width:780px;margin:40px auto;color:#2c2416}h1{border-bottom:2px solid #8b4513;padding-bottom:8px}h2{border-bottom:1px solid #d4ccc2;padding-bottom:6px;margin-top:1.4em}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{border:1px solid #d4ccc2;padding:8px 12px}th{background:#f3f0ec}</style></head><body>';
+  h+='<h1>'+pipeName+' 报告</h1>';
+  h+='<p>生成时间：'+new Date().toLocaleString()+' | 耗时：'+(r.elapsedSeconds||'?')+' 秒</p>';
+  var ss=r.stages||[];
+  for(var i=0;i<ss.length;i++){
+    h+='<h2>'+ss[i].emoji+' '+ss[i].name+'</h2>';
+    h+=md2h(ss[i].output||'(无输出)');
+  }
+  h+='</body></html>';
   return h;
 }

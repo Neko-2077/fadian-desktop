@@ -13,4 +13,7 @@ contextBridge.exposeInMainWorld('fadian', {
     return ipcRenderer.invoke('api:check-key');
   },
   runReview: (params) => ipcRenderer.invoke('api:run-review', params),
+  loadLatest: () => ipcRenderer.invoke('api:load-latest'),
+  loadHistory: () => ipcRenderer.invoke('api:load-history'),
+  exportFile: (params) => ipcRenderer.invoke('api:export-file', params),
 });
